@@ -31,18 +31,33 @@ def _check_env() -> None:
         sys.exit("Error: ANTHROPIC_API_KEY environment variable is not set.")
 
 
-async def _run(intent: str, output_path: str | None) -> None:
-    import orchestrator
-    from synthesis import synthesizer
+async def _run(intent: str, output_path: str | None, dry_run: bool = False) -> None:
     from output import formatter
 
-    # Phase 1-3: Orchestrator + parallel agents
-    state = await orchestrator.run(intent)
+    if dry_run:
+        import mock_agents
+        logger.info("[DRY RUN] Building mock state — no API calls made")
+        state = mock_agents.build_mock_state(intent)
+        logger.info(
+            "[DRY RUN] Mock data: %d content, %d competitor, %d technical items",
+            len(state.content_output),
+            len(state.competitor_output),
+            len(state.technical_output),
+        )
+        logger.info("[DRY RUN] Running mock synthesis...")
+        report = mock_agents.build_mock_report(state)
+        state.final_output = report
+    else:
+        import orchestrator
+        from synthesis import synthesizer
 
-    # Phase 4: Synthesis
-    logger.info("Running synthesis agent...")
-    report = synthesizer.run(state)
-    state.final_output = report
+        # Phase 1-3: Orchestrator + parallel agents
+        state = await orchestrator.run(intent)
+
+        # Phase 4: Synthesis
+        logger.info("Running synthesis agent...")
+        report = synthesizer.run(state)
+        state.final_output = report
 
     # Phase 5: Output
     logger.info("Writing markdown report...")
@@ -67,8 +82,6 @@ async def _run(intent: str, output_path: str | None) -> None:
 
 
 def main() -> None:
-    _check_env()
-
     parser = argparse.ArgumentParser(description="Banking AI Intelligence System")
     parser.add_argument(
         "intent",
@@ -78,14 +91,22 @@ def main() -> None:
     )
     parser.add_argument("--intent", dest="intent_flag", help="Research intent (alternative flag)")
     parser.add_argument("--output", help="Output path for markdown report")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Use mock data — no API key required, exercises full pipeline",
+    )
     args = parser.parse_args()
+
+    if not args.dry_run:
+        _check_env()
 
     intent = args.intent_flag or args.intent
 
-    logger.info("Starting Banking AI Intelligence run")
+    logger.info("Starting Banking AI Intelligence run%s", " [DRY RUN]" if args.dry_run else "")
     logger.info("Intent: %s", intent)
 
-    asyncio.run(_run(intent, args.output))
+    asyncio.run(_run(intent, args.output, dry_run=args.dry_run))
 
 
 if __name__ == "__main__":
