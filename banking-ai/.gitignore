@@ -1,4 +1,5 @@
 output/report.md
+output/report.html
 output/artifact.html
 __pycache__/
 *.pyc
