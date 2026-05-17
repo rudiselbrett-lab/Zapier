@@ -1,8 +1,9 @@
 """
-Output formatter — writes the final markdown report to output/report.md.
+Output formatter — writes report.md and artifact.html from the final report JSON.
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import date
 from pathlib import Path
@@ -112,4 +113,54 @@ def write_markdown(report: dict, intent: str, output_path: str | None = None) ->
 
     out = output_path or os.path.join(os.path.dirname(__file__), "report.md")
     Path(out).write_text(md, encoding="utf-8")
+
+    # Also write the interactive HTML artifact
+    html_out = str(Path(out).parent / "artifact.html")
+    write_artifact(report, intent, html_out)
+
+    return out
+
+
+def write_artifact(report: dict, intent: str, output_path: str | None = None) -> str:
+    today = date.today().isoformat()
+    report_json = json.dumps(report, ensure_ascii=False)
+
+    # Read the JSX source to embed inline
+    jsx_path = Path(__file__).parent / "artifact.jsx"
+    jsx_source = jsx_path.read_text(encoding="utf-8") if jsx_path.exists() else ""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Banking AI Intelligence — {today}</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: #f9fafb; }}
+    a:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module">
+    const reportData = {report_json};
+    const intentStr = {json.dumps(intent)};
+    const dateStr = {json.dumps(today)};
+
+    {jsx_source}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+      <App report={{reportData}} intent={{intentStr}} date={{dateStr}} />
+    );
+  </script>
+</body>
+</html>"""
+
+    out = output_path or os.path.join(os.path.dirname(__file__), "artifact.html")
+    Path(out).write_text(html, encoding="utf-8")
     return out
